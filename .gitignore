@@ -1,0 +1,42 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Agent / temp artifacts
+tmp/
+tmp_*
+_review/
+_archive/
+_agent_copy/
+_agent_*/
+docs/shots/
+tsc-out.txt
+_corrupt_lines.txt
+TICKET.md
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# docs
+docs
+
+# 未接入场景的旧城模，超过 GitHub 建议体积
+public/models/city_pbr_review.glb

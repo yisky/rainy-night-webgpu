@@ -1,0 +1,18 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"strict": true,
+		"noEmit": true,
+		"skipLibCheck": true,
+		"isolatedModules": true,
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"paths": {
+			"three/webgpu": ["./node_modules/@types/three/build/three.webgpu.d.ts"],
+			"three/tsl": ["./node_modules/@types/three/build/three.tsl.d.ts"]
+		}
+	},
+	"include": ["src"]
+}
