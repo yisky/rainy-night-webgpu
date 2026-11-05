@@ -88,7 +88,7 @@ export const ROAD_BRIDGE_WET_DEFAULTS = {
 	rippleStrength: 0.28,
 	/** 涟漪看法线，环纹起伏更显眼。 */
 	rippleNormalStrength: 0.18,
-	albedoBoost: 3.6,
+	albedoBoost: 2.9,
 	opacity: 0.96,
 	albedoUrl: '/textures/wet-puddles-albedo.jpg',
 	roughnessUrl: '/textures/wet-puddles-roughness.jpg',
@@ -635,9 +635,9 @@ export async function createRoadBridgeWet(
 	)
 	material.normalNode = normalMap( warpedNormalTex )
 	const floorLiftRgb = vec3(
-		uPuddleFloorLift.mul( float( 0.88 ) ),
-		uPuddleFloorLift,
-		uPuddleFloorLift.mul( float( 1.12 ) ),
+		uPuddleFloorLift.mul( float( 0.72 ) ),
+		uPuddleFloorLift.mul( float( 0.92 ) ),
+		uPuddleFloorLift.mul( float( 1.18 ) ),
 	)
 	const wetAlbedo = albedoSample.rgb.mul( uAlbedoBoost ).add( floorLiftRgb.mul( puddleMask ) )
 	material.colorNode = wetAlbedo

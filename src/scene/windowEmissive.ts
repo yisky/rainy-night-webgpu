@@ -30,12 +30,12 @@ const WINDOW_EMISSIVE_COLOR = new Color( 0xffd4a8 )
  * Material_27 目标 emissiveIntensity。
  * 略抬，让外景缩成像素时还能被泛光咬到。
  */
-const MATERIAL_27_INTENSITY = 2.7
+const MATERIAL_27_INTENSITY = 2.4
 
 /**
  * Plane030 目标 emissiveIntensity：带透射，略低于主体以免过曝。
  */
-const PLANE030_INTENSITY = 1.85
+const PLANE030_INTENSITY = 1.6
 
 /**
  * Material_27（窗暖主体）的 renderOrder：先于其它叠层，先画。

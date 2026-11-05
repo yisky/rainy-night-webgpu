@@ -26,8 +26,8 @@ const SHOP_EMISSIVE_TARGETS: {
 	/** 目标 emissiveIntensity。 */
 	intensity: number
 }[] = [
-	{ name: 'Material_21', color: 0xffe0c8, intensity: 1.85 },
-	{ name: 'Material_94', color: 0xffd4b0, intensity: 1.8 },
+	{ name: 'Material_21', color: 0xf0d8c0, intensity: 1.85 },
+	{ name: 'Material_94', color: 0xecd0b4, intensity: 1.8 },
 ]
 
 /** 禁止当灯加亮的材质名（七夕短册）。 */

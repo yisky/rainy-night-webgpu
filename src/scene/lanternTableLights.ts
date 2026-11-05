@@ -21,8 +21,8 @@ import {
 	type LanternFlickerLightMeta,
 } from './createLanternFlicker'
 
-/** 与真灯笼点光同系的暖白纸灯色（少一点脏橙）。 */
-const TABLE_LIGHT_COLOR = 0xffd4a8
+/** 点光填充色：微暖白。灯芯/窗自发光仍走桃杏，避免整条巷被染成纸灯色。 */
+const TABLE_LIGHT_COLOR = 0xf0e2d0
 
 /** 独立灯笼（真节点）默认点光强度。 */
 const INTENSITY_INDEPENDENT = 24

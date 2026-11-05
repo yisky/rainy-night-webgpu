@@ -45,10 +45,10 @@ const SKY_RADIUS = 135
 const SKY_Y = -33.5
 
 /** 天顶色，比地平更暗，保持夜空层次。 */
-const SKY_TOP = 0x0a1018
+const SKY_TOP = 0x071018
 
-/** 近地平线色，与 SSF 雾色 #1e2a38 对齐。 */
-const SKY_BOTTOM = 0x1e2a38
+/** 近地平线色，与 SSF 雾色 #172a3c 对齐。 */
+const SKY_BOTTOM = 0x172a3c
 
 /**
  * 夜空噪声贴图 URL（雨夜 `public/textures`，内容同 punk reference-assets）。

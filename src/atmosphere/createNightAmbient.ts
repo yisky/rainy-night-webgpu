@@ -23,17 +23,17 @@ export interface NightAmbientHandle {
 export interface NightAmbientOptions {
 	/**
 	 * 清屏 / 背景色（深青黑）。雾色不写在这里，只进 SSF 雾参。
-	 * @defaultValue `0x101820`
+	 * @defaultValue `0x0c141c`
 	 */
 	backgroundColor?: number
 	/**
 	 * 半球天上颜色。朝上的屋顶 / 地面主要吃这一层。
-	 * @defaultValue `0x6a7a88`
+	 * @defaultValue `0x4e6a82`
 	 */
 	skyColor?: number
 	/**
 	 * 半球地面颜色。檐底 / 朝下的面吃这一层，比天色暗，避免把阴影翻亮。
-	 * @defaultValue `0x1a222c`
+	 * @defaultValue `0x101820`
 	 */
 	groundColor?: number
 	/**
@@ -46,9 +46,9 @@ export interface NightAmbientOptions {
 
 /** 夜氛围默认：弱半球光 + 深色清屏。 */
 const NIGHT = {
-	backgroundColor: 0x101820,
-	skyColor: 0x6a7a88,
-	groundColor: 0x1a222c,
+	backgroundColor: 0x0c141c,
+	skyColor: 0x4e6a82,
+	groundColor: 0x101820,
 	intensity: 0.22,
 } as const
 

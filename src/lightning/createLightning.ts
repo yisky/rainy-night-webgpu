@@ -1,8 +1,8 @@
 /**
- * 雨夜闪电：世界空间折线光带 + 青蓝光晕 + 无阴影方向光打湿地。
+ * 雨夜闪电：世界空间折线光带 + 白芯 / 电青 / 青紫三层加法管 + 无阴影方向光打湿地。
  *
- * 芯是过曝白、外圈是更粗的加法光晕管。管子不进场景 pass / SceneBloom
- *（Karis 会把细线压没），改由雾后的独立图层相加叠回，再进 `renderOutput`。
+ * 芯过曝白、中圈电青、外圈青紫软边。管子不进场景 pass / SceneBloom
+ *（Karis 会把细线压没），改由雾后的独立图层相加叠回；管线再对闪电 pass 做无 Karis 色差软晕。
  * 整段落在城外天际线圈上，不沿视线反投影，避免穿楼；深度测试只挡眼前的房。
  * 雷声由本模块给出延迟，音频侧一对一播放，不走自发雷。
  *
@@ -28,6 +28,7 @@ import {
 	abs,
 	color,
 	dot,
+	float,
 	Fn,
 	mix,
 	normalView,
@@ -53,12 +54,14 @@ const MAX_ITERS = 5
 const ROUGHNESS = 0.65
 /** 1 为完全直；越小越折。实际位移用 `1 - STRAIGHTNESS`。 */
 const STRAIGHTNESS = 0.82
-const RADIUS_MAIN = 0.034
-const RADIUS_HALO_MAIN = 0.34
-const RADIUS_BRANCH = 0.016
-const RADIUS_HALO_BRANCH = 0.16
+const RADIUS_MAIN = 0.032
+const RADIUS_CYAN_MAIN = 0.09
+const RADIUS_PURPLE_MAIN = 0.22
+const RADIUS_BRANCH = 0.018
+const RADIUS_CYAN_BRANCH = 0.06
 const TUBE_RADIAL_CORE = 5
-const TUBE_RADIAL_HALO = 8
+const TUBE_RADIAL_CYAN = 8
+const TUBE_RADIAL_PURPLE = 10
 
 /** 一次闪的寿命（秒）。 */
 const LIFE = 0.95
@@ -79,10 +82,12 @@ const THUNDER_DELAY_MAX = 0.22
 /** 无阴影方向光峰值，打湿地和墙。 */
 const DIR_PEAK = 3.8
 const LIGHT_COLOR = 0xcfe8ff
-/** 芯管加法亮度峰值。 */
-const BOLT_GLOW = 3.2
-/** 光晕管峰值；再乘 env²，尾巴收得比芯快。 */
-const HALO_PEAK = 0.42
+/** 芯管加法亮度峰值。够烫才让 ACES 夹出死白。 */
+const BOLT_GLOW = 9
+/** 电青中圈峰值。与芯同乘 env，不提前收。 */
+const HALO_CYAN = 1.05
+/** 青紫外圈峰值。面积大、能量低于中圈。 */
+const HALO_PURPLE = 0.55
 
 /**
  * {@link createLightning} 入参。
@@ -184,6 +189,7 @@ function displaceRay(
 	variation: number,
 	seed: number,
 	out: RayPoint[],
+	clampPt: ( p: Vector3 ) => void,
 ): void {
 	if ( depth <= 0 ) {
 		out.push( { pos: b.clone(), fraction: fb } )
@@ -202,28 +208,49 @@ function displaceRay(
 	}
 	offset.y *= 0.35
 	mid.add( offset )
-	clampToHorizonRing( mid )
+	clampPt( mid )
 	const fm = ( fa + fb ) * 0.5
-	displaceRay( a, mid, fa, fm, depth - 1, variation * ROUGHNESS, seed * 1.17, out )
-	displaceRay( mid, b, fm, fb, depth - 1, variation * ROUGHNESS, seed * 1.31, out )
+	displaceRay( a, mid, fa, fm, depth - 1, variation * ROUGHNESS, seed * 1.17, out, clampPt )
+	displaceRay( mid, b, fm, fb, depth - 1, variation * ROUGHNESS, seed * 1.31, out, clampPt )
 }
 
-/** 从云端到落点生成折线，并保证每个点 xz 都在天际线圈上。 */
-function buildPoints( source: Vector3, dest: Vector3, iters: number, seed: number ): Vector3[] {
+/** 从云端到落点生成折线；主干夹在天际线圈上，分叉用更松的环以免挤成一弧。 */
+function buildPoints(
+	source: Vector3,
+	dest: Vector3,
+	iters: number,
+	seed: number,
+	clampPt: ( p: Vector3 ) => void = clampToHorizonRing,
+): Vector3[] {
 	const pts: RayPoint[] = [ { pos: source.clone(), fraction: 0 } ]
-	displaceRay( source, dest, 0, 1, iters, 1 - STRAIGHTNESS, seed, pts )
+	displaceRay( source, dest, 0, 1, iters, 1 - STRAIGHTNESS, seed, pts, clampPt )
 	return pts.map( ( p ) => {
-		clampToHorizonRing( p.pos )
+		clampPt( p.pos )
 		return p.pos
 	} )
 }
 
+/** 一次闪最多几条分叉（含子叉）。 */
+const MAX_BRANCHES = 14
+/** 沿主干相邻分叉至少隔这么多折线点，避免邻点同时长叉糊成一坨。 */
+const BRANCH_MIN_GAP = 4
+/** 新分叉落点离已有落点至少这么远（世界单位）。 */
+const BRANCH_MIN_DEST_DIST = 6
+const BRANCH_MIN_DEST_DIST_SQ = BRANCH_MIN_DEST_DIST * BRANCH_MIN_DEST_DIST
+
 /**
- * 从主干一点岔出短枝落点。行程有上限，避免分叉飞到镜头前变成粗柱。
+ * 从主干一点岔出落点。长度按世界米数，不跟相邻折线点走，否则分叉只有一两米。
  *
- * @param spread - 侧向随机幅度系数，主干分叉约 1.8，子叉约 1.4。
+ * @param spread - 侧向幅度：主干分叉 1，子叉略小。
+ * @param sideSign - 强制左右，1 / -1 交替，避免全倒同一侧。
  */
-function forkDest( origin: Vector3, along: Vector3, seed: number, spread: number ): Vector3 | null {
+function forkDest(
+	origin: Vector3,
+	along: Vector3,
+	seed: number,
+	spread: number,
+	sideSign: number,
+): Vector3 | null {
 	const len = along.length()
 	if ( len < 1e-4 ) return null
 	const dir = along.clone().normalize()
@@ -231,38 +258,55 @@ function forkDest( origin: Vector3, along: Vector3, seed: number, spread: number
 	side.cross( dir )
 	if ( side.lengthSq() < 1e-8 ) return null
 	side.normalize()
+	const travel = ( 8 + hash01( seed + 1 ) * 12 ) * spread
+	const sideAmt = sideSign * ( 7 + hash01( seed + 3 ) * 9 ) * spread
 	const dest = origin.clone()
-		.add( dir.multiplyScalar( Math.min( 7, len * ( 1.15 + hash01( seed + 1 ) * spread ) ) ) )
-		.add( side.multiplyScalar( ( hash01( seed + 2 ) - 0.5 ) * Math.min( 5, len * spread ) ) )
-	dest.y += ( hash01( seed + 5 ) - 0.42 ) * len * 1.1
-	clampToHorizonRing( dest )
+		.add( dir.multiplyScalar( travel ) )
+		.add( side.multiplyScalar( sideAmt ) )
+	dest.y += ( hash01( seed + 5 ) - 0.58 ) * 10 * spread
+	clampBranchBand( dest )
 	return dest
 }
 
+function destTooClose( dest: Vector3, used: Vector3[] ): boolean {
+	for ( let k = 0; k < used.length; k++ ) {
+		if ( used[ k ]!.distanceToSquared( dest ) < BRANCH_MIN_DEST_DIST_SQ ) return true
+	}
+	return false
+}
+
 /**
- * 沿主干抽最多 8 条分叉，部分再出一截子叉。
- * 分叉几何仍走 {@link buildPoints}，xz 同样夹在天际线圈上。
+ * 沿主干按间距抽分叉，左右交替；落点互斥。部分再出一截子叉。
+ * 分叉几何走 {@link buildPoints}，xz 用更松的环，不跟主干挤同一条弧。
  */
 function tryBranches( main: Vector3[], seed: number ): Vector3[][] {
 	const branches: Vector3[][] = []
+	const dests: Vector3[] = []
 	const n = main.length
-	const i0 = Math.max( 2, Math.floor( n * 0.08 ) )
-	const i1 = Math.min( n - 3, Math.floor( n * 0.84 ) )
-	for ( let i = i0; i < i1; i += 2 ) {
-		if ( branches.length >= 8 ) break
-		if ( hash01( seed + i * 9.1 ) > 0.74 ) continue
+	const i0 = Math.max( 2, Math.floor( n * 0.1 ) )
+	const i1 = Math.min( n - 3, Math.floor( n * 0.88 ) )
+	let lastI = i0 - BRANCH_MIN_GAP
+	let sideSign = hash01( seed ) > 0.5 ? 1 : -1
+	for ( let i = i0; i < i1; i++ ) {
+		if ( branches.length >= MAX_BRANCHES ) break
+		if ( i - lastI < BRANCH_MIN_GAP ) continue
+		if ( hash01( seed + i * 9.1 ) > 0.35 ) continue
 		const p = main[ i ]!
 		const prev = main[ i - 1 ]!
-		const dest = forkDest( p, new Vector3().subVectors( p, prev ), seed + i * 17, 1.8 )
-		if ( ! dest ) continue
-		const branch = buildPoints( p, dest, 2, seed + i * 17 )
+		const dest = forkDest( p, new Vector3().subVectors( p, prev ), seed + i * 17, 1, sideSign )
+		if ( ! dest || destTooClose( dest, dests ) ) continue
+		const branch = buildPoints( p, dest, 3, seed + i * 17, clampBranchBand )
 		branches.push( branch )
-		if ( branches.length >= 8 || branch.length < 5 ) continue
-		if ( hash01( seed + i + 3.3 ) < 0.48 ) continue
+		dests.push( dest )
+		lastI = i
+		sideSign = -sideSign
+		if ( branches.length >= MAX_BRANCHES || branch.length < 5 ) continue
+		if ( hash01( seed + i + 3.3 ) < 0.32 ) continue
 		const mid = branch[ Math.floor( branch.length * ( 0.3 + hash01( seed + i + 4 ) * 0.35 ) ) ]!
-		const childDest = forkDest( mid, new Vector3().subVectors( dest, p ), seed + i * 29, 1.4 )
-		if ( ! childDest ) continue
-		branches.push( buildPoints( mid, childDest, 2, seed + i * 31 ) )
+		const childDest = forkDest( mid, new Vector3().subVectors( dest, p ), seed + i * 29, 0.72, sideSign )
+		if ( ! childDest || destTooClose( childDest, dests ) ) continue
+		branches.push( buildPoints( mid, childDest, 2, seed + i * 31, clampBranchBand ) )
+		dests.push( childDest )
 	}
 	return branches
 }
@@ -289,12 +333,11 @@ function flattenedForward( camera: Camera, out: Vector3 ): Vector3 {
 }
 
 /**
- * 把点的 xz 夹在 `[CITY_CLEAR, RING_MAX+4]`。
+ * 把点的 xz 夹在 `[CITY_CLEAR, maxR]`。
  * 进城会穿楼；飞出环会落到镜头附近，管看起来极粗。
  */
-function clampToHorizonRing( p: Vector3 ): void {
+function clampToHorizonBand( p: Vector3, maxR: number ): void {
 	const r = Math.hypot( p.x, p.z )
-	const maxR = RING_MAX + 4
 	if ( r < 1e-6 ) {
 		p.x = CITY_CLEAR
 		return
@@ -310,6 +353,16 @@ function clampToHorizonRing( p: Vector3 ): void {
 		p.x *= s
 		p.z *= s
 	}
+}
+
+/** 主干：夹在天际线圈上。 */
+function clampToHorizonRing( p: Vector3 ): void {
+	clampToHorizonBand( p, RING_MAX + 4 )
+}
+
+/** 分叉：仍不许进城，径向比主干多留一截，避免全被压回同一条弧。 */
+function clampBranchBand( p: Vector3 ): void {
+	clampToHorizonBand( p, RING_MAX + 12 )
 }
 
 /** 世界原点水平圆上的一点。`azimuth` 为从 +Z 起、朝 +X 的角。 */
@@ -405,7 +458,7 @@ function pickStrike(
 function setupBoltMaterial(
 	name: string,
 	colorNode: MeshBasicNodeMaterial['colorNode'],
-	side: typeof DoubleSide | typeof FrontSide,
+	side: typeof DoubleSide | typeof FrontSide = DoubleSide,
 ): MeshBasicNodeMaterial {
 	const material = new MeshBasicNodeMaterial()
 	material.name = name
@@ -440,7 +493,7 @@ function makeTube(
 }
 
 /**
- * 搭建闪电：白芯 + 青蓝光晕管 + 无阴影方向光。
+ * 搭建闪电：白芯 + 电青中圈 + 青紫外圈 + 无阴影方向光。
  *
  * 调用方须：主相机 enable 本图层；场景 pass disable 本图层；雾后单独 pass 画管子；
  * `thunderDelay !== null` 时播雷；`forceBake` 时只强制河面烤图。
@@ -455,7 +508,8 @@ export function createLightning( options: LightningOptions ): LightningHandle {
 	root.name = 'Lightning'
 
 	const uGlow = uniform( 0 )
-	const uHalo = uniform( 0 )
+	const uHaloCyan = uniform( 0 )
+	const uHaloPurple = uniform( 0 )
 	/** 沿管 UV.x 生长到此为止；小于此的片段 Discard。 */
 	const uGrow = uniform( 1 )
 	/** 沿管 UV.x 从此处消隐。 */
@@ -465,16 +519,25 @@ export function createLightning( options: LightningOptions ): LightningHandle {
 		const along = uv().x
 		Discard( along.greaterThan( uGrow ).or( along.lessThan( uVanish ) ) )
 		const ndv = abs( dot( normalView, positionViewDirection ) )
-		const rim = pow( ndv, 3.5 )
-		return mix( color( 0xa8c8ff ), color( 0xf5fbff ), rim ).mul( uGlow )
-	} )(), DoubleSide )
+		const facing = pow( ndv, 2 )
+		return mix( color( 0xd0e8ff ), color( 0xffffff ), facing ).mul( uGlow )
+	} )() )
 
-	const haloMaterial = setupBoltMaterial( 'LightningHalo', Fn( () => {
+	const cyanMaterial = setupBoltMaterial( 'LightningCyan', Fn( () => {
 		const along = uv().x
 		Discard( along.greaterThan( uGrow ).or( along.lessThan( uVanish ) ) )
 		const ndv = abs( dot( normalView, positionViewDirection ) )
-		const fall = pow( ndv, 2.2 )
-		return color( 0x9fc8ff ).mul( uHalo ).mul( fall )
+		const fall = pow( ndv, 0.55 )
+		return mix( color( 0x4eb8ff ), color( 0xe8ffff ), pow( ndv, 1.4 ) ).mul( uHaloCyan ).mul( fall )
+	} )(), FrontSide )
+
+	const purpleMaterial = setupBoltMaterial( 'LightningPurple', Fn( () => {
+		const along = uv().x
+		Discard( along.greaterThan( uGrow ).or( along.lessThan( uVanish ) ) )
+		const ndv = abs( dot( normalView, positionViewDirection ) )
+		const rim = float( 1 ).sub( ndv )
+		const fall = rim.mul( 0.75 ).add( ndv.mul( 0.35 ) )
+		return mix( color( 0x88d8ff ), color( 0xc878ff ), pow( rim, 1.2 ) ).mul( uHaloPurple ).mul( fall )
 	} )(), FrontSide )
 
 	const bolts = new Group()
@@ -506,10 +569,14 @@ export function createLightning( options: LightningOptions ): LightningHandle {
 		}
 	}
 
-	const addBolt = ( points: Vector3[], coreR: number, haloR: number ) => {
-		const halo = makeTube( points, haloR, TUBE_RADIAL_HALO, haloMaterial, 12 )
+	const addBolt = ( points: Vector3[], coreR: number, cyanR: number, purpleR: number ) => {
+		if ( purpleR > 1e-4 ) {
+			const purple = makeTube( points, purpleR, TUBE_RADIAL_PURPLE, purpleMaterial, 11 )
+			if ( purple ) bolts.add( purple )
+		}
+		const cyan = makeTube( points, cyanR, TUBE_RADIAL_CYAN, cyanMaterial, 12 )
 		const core = makeTube( points, coreR, TUBE_RADIAL_CORE, coreMaterial, 13 )
-		if ( halo ) bolts.add( halo )
+		if ( cyan ) bolts.add( cyan )
 		if ( core ) bolts.add( core )
 	}
 
@@ -521,9 +588,9 @@ export function createLightning( options: LightningOptions ): LightningHandle {
 		const dist = view.position.distanceTo( pair.dest )
 		const scale = Math.min( 1.6, Math.max( 1, dist / 40 ) )
 		const main = buildPoints( pair.source, pair.dest, MAX_ITERS, strikeSeed )
-		addBolt( main, RADIUS_MAIN * scale, RADIUS_HALO_MAIN * scale )
+		addBolt( main, RADIUS_MAIN * scale, RADIUS_CYAN_MAIN * scale, RADIUS_PURPLE_MAIN * scale )
 		for ( const branch of tryBranches( main, strikeSeed + 99 ) ) {
-			addBolt( branch, RADIUS_BRANCH * scale, RADIUS_HALO_BRANCH * scale )
+			addBolt( branch, RADIUS_BRANCH * scale, RADIUS_CYAN_BRANCH * scale, 0 )
 		}
 		dirLight.position.copy( pair.source )
 		dirLight.target.position.copy( pair.dest )
@@ -563,7 +630,8 @@ export function createLightning( options: LightningOptions ): LightningHandle {
 				bolts.visible = false
 				dirLight.intensity = 0
 				uGlow.value = 0
-				uHalo.value = 0
+				uHaloCyan.value = 0
+				uHaloPurple.value = 0
 				if ( timeSec >= nextStrikeAt ) beginStrike( view, timeSec )
 				if ( ! striking ) return idle()
 			}
@@ -575,7 +643,8 @@ export function createLightning( options: LightningOptions ): LightningHandle {
 				bolts.visible = false
 				dirLight.intensity = 0
 				uGlow.value = 0
-				uHalo.value = 0
+				uHaloCyan.value = 0
+				uHaloPurple.value = 0
 				nextStrikeAt = timeSec + randRange( GAP[ 0 ], GAP[ 1 ] )
 				return idle()
 			}
@@ -585,7 +654,8 @@ export function createLightning( options: LightningOptions ): LightningHandle {
 			const env = lightEnvelope( elapsed )
 			dirLight.intensity = DIR_PEAK * env
 			uGlow.value = BOLT_GLOW * env
-			uHalo.value = HALO_PEAK * env * env
+			uHaloCyan.value = HALO_CYAN * env
+			uHaloPurple.value = HALO_PURPLE * env
 			const thunderDelay = thunderSent ? null : pendingThunderDelay
 			if ( thunderDelay !== null ) thunderSent = true
 			return {
@@ -598,7 +668,8 @@ export function createLightning( options: LightningOptions ): LightningHandle {
 			clearBolts()
 			root.removeFromParent()
 			coreMaterial.dispose()
-			haloMaterial.dispose()
+			cyanMaterial.dispose()
+			purpleMaterial.dispose()
 			dirLight.dispose()
 		},
 	}

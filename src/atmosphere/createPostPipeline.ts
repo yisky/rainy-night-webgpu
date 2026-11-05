@@ -1,7 +1,7 @@
 /**
  * 雨夜后处理管线：场景 pass → 雨层相加 → 泛光 → 高度雾 → 闪电 → 色调映射 → 抖动。
  *
- * 串序：beauty = color + rain → bloom → SSF 雾 → 闪电 pass
+ * 串序：beauty = color + rain → bloom → SSF 雾 → 闪电 pass（锐芯 + 色差软晕）
  * → `renderOutput`(ACES + sRGB) → Dither。
  * 积水倒影由 createPlanarPuddleReflect 烤 RT，经 ReflectOverlay 叠回；干路不采平面倒影。
  * 雨丝/水花另开无 MRT 的 pass（Additive 粒子），与场景 pass 共用深度后再叠回。
@@ -19,16 +19,25 @@ import {
 	Vector2,
 	Vector3,
 	type Camera,
+	type Node,
 	type Scene,
+	type TextureNode,
 	type WebGPURenderer,
 } from 'three/webgpu'
 import {
 	add,
 	float,
+	Fn,
+	int,
 	mul,
 	pass,
 	renderOutput,
+	textureSize,
 	uniform,
+	uv,
+	vec2,
+	vec3,
+	vec4,
 } from 'three/tsl'
 import { SceneBloom } from './bloom/Bloom'
 import { Dither } from './dither/Dither'
@@ -43,7 +52,7 @@ export const RAINY_SSF_FOG_DEFAULTS = {
 	/** 开启高度雾 */
 	enabled: true,
 	/** 与天穹地平、清屏同一套冷青灰，把城边吃进雾里 */
-	fogColor: '#1e2a38',
+	fogColor: '#172a3c',
 	/** 远景几乎化进雾，藏住 48 单位小岛的硬边 */
 	fogMaxOpacity: 0.82,
 	/** 略加密；近处仍靠 fogStartDistance 保住灯笼 */
@@ -60,8 +69,8 @@ export const RAINY_SSF_FOG_DEFAULTS = {
 	noiseSpeedX: 0.18,
 	noiseSpeedZ: 0.06,
 	/** 散射跟雾色同一族，压低免得把地平洗亮 */
-	inscatteringColor: '#243446',
-	inscatteringIntensity: 0.32,
+	inscatteringColor: '#1c3648',
+	inscatteringIntensity: 0.26,
 	inscatteringExponent: 4,
 	inscatteringStart: 18,
 	/** 散射方向：偏南偏东 */
@@ -70,10 +79,9 @@ export const RAINY_SSF_FOG_DEFAULTS = {
 } as const
 
 /**
- * 雨夜泛光默认强度。略高于参照仓 `0.05`，让远处小灯还能晕一层。
- * 近处窗/灯笼过曝时可收到 0.05。
+ * 雨夜泛光默认强度。压到 0.05，避免暖灯晕把邻墙染黄。
  */
-export const RAINY_BLOOM_STRENGTH = 0.07
+export const RAINY_BLOOM_STRENGTH = 0.05
 
 /**
  * {@link createPostPipeline} 选项。
@@ -129,6 +137,48 @@ function lightDirectionFromAzEl( azimuthDeg: number, elevationDeg: number ): Vec
 		-Math.sin( el ),
 		Math.cos( az ) * horizontal,
 	)
+
+}
+
+/**
+ * 闪电 pass 锐芯 + 无 Karis 色差软晕。
+ *
+ * 中圈偏电青、外圈偏品红，只糊这一张黑底加法图，不进 SceneBloom。
+ */
+function composeLightningGlow( bolt: TextureNode ) {
+
+	return Fn( () => {
+
+		const texel = vec2( 1, 1 ).div( textureSize( bolt, int( 0 ) ) as never )
+		const uv0 = uv()
+		const tap = ( dx: number, dy: number, px: number ) => {
+			const sampled = bolt.sample( uv0.add( texel.mul( vec2( dx, dy ) ).mul( px ) ) ) as Node< 'vec4' >
+			return sampled.rgb
+		}
+
+		const sharp = tap( 0, 0, 0 )
+		const mid = tap( 0, 0, 3 )
+			.add( tap( 1, 0, 3 ) )
+			.add( tap( -1, 0, 3 ) )
+			.add( tap( 0, 1, 3 ) )
+			.add( tap( 0, -1, 3 ) )
+			.add( tap( 1, 1, 2 ) )
+			.add( tap( -1, 1, 2 ) )
+			.add( tap( 1, -1, 2 ) )
+			.add( tap( -1, -1, 2 ) )
+			.mul( 1 / 9 )
+		const wide = tap( 1, 0, 8 )
+			.add( tap( -1, 0, 8 ) )
+			.add( tap( 0, 1, 8 ) )
+			.add( tap( 0, -1, 8 ) )
+			.add( tap( 1, 1, 6 ) )
+			.add( tap( -1, -1, 6 ) )
+			.mul( 1 / 6 )
+		const cyan = mid.mul( vec3( 0.55, 0.9, 1.45 ) )
+		const purple = wide.mul( vec3( 1.15, 0.42, 1.4 ) )
+		return vec4( sharp.mul( 1.15 ).add( cyan.mul( 0.9 ) ).add( purple.mul( 0.7 ) ), 1 )
+
+	} )()
 
 }
 
@@ -251,6 +301,7 @@ export function createPostPipeline( options: PostPipelineOptions ): PostPipeline
 
 	const uLightningFill = uniform( 0 )
 	const lightningColor = lightningPass.getTextureNode( 'output' )
+	const lightningGlow = composeLightningGlow( lightningColor )
 	const pipeline = new RenderPipeline( renderer )
 	// 关掉管线自带输出变换，改由 renderOutput 显式做 ACES+sRGB，再接抖动。
 	// 渲染器保持 NoToneMapping，倒影烤图才不会被压两遍。
@@ -258,7 +309,7 @@ export function createPostPipeline( options: PostPipelineOptions ): PostPipeline
 	// SSF 类上没有 TSL 链式方法；折线加在雾后，才不会被远景深度洗淡。
 	const graded = add(
 		mul( fog as never, float( 1 ).add( uLightningFill.mul( 0.5 ) ) ),
-		lightningColor,
+		lightningGlow as never,
 	)
 	const mapped = renderOutput( graded, ACESFilmicToneMapping, SRGBColorSpace )
 	const dither = new Dither( { input: mapped } )

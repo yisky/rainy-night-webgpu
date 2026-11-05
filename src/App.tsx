@@ -76,11 +76,11 @@ export default function App() {
 
 			renderer.setPixelRatio( Math.min( window.devicePixelRatio, 2 ) )
 			renderer.setSize( hostEl.clientWidth, hostEl.clientHeight )
-			renderer.setClearColor( 0x101820, 1 )
+			renderer.setClearColor( 0x0c141c, 1 )
 			// 渲染器保持线性，倒影烤图才不会被 ACES 压两遍。
 			// 主画面色调映射走管线里的 renderOutput(ACES)，曝光用这一项。
 			renderer.toneMapping = NoToneMapping
-			renderer.toneMappingExposure = 1.2
+			renderer.toneMappingExposure = 1.05
 			renderer.shadowMap.enabled = true
 			renderer.shadowMap.type = PCFShadowMap
 			// 自管 rAF，不走 setAnimationLoop；帧计数自己 reset，否则 drawCalls 会累加。

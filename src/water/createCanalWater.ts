@@ -61,9 +61,9 @@ const CANAL_NOISE_BREAK_SCALE = 0.3
  */
 export const CANAL_WATER_DEFAULTS = {
 	/** 水体底色（线性近似）；压暗以提高倒影对比，仍保留碎高光与涟漪可读性。 */
-	colorR: 0.035,
-	colorG: 0.045,
-	colorB: 0.055,
+	colorR: 0.028,
+	colorG: 0.042,
+	colorB: 0.060,
 	/** 粗糙度：压到 0.025 收紧夜景 PointLight 镜面斑。 */
 	roughness: 0.025,
 	/** 金属度：0，让点光高光走 roughness 而不是金属油膜。 */
