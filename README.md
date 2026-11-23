@@ -1,34 +1,39 @@
 # rainy-night-webgpu
 
-three.js `0.186` WebGPU 雨夜城景：京都风小巷、雨丝、湿路、河面倒影、灯笼与偶发闪电。
+English · [中文](README.zh-CN.md)
 
-## 运行
+A rainy Kyoto-style alley in the browser: rain, wet streets, a canal, lanterns, and occasional lightning. Built with three.js `0.186` `WebGPURenderer` + TSL.
+
+Live demo: https://rainy-night-webgpu.vercel.app/
+
+## Run
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-打开 http://localhost:5173/ 。需要支持 WebGPU 的浏览器。
+Open http://localhost:5173/. Requires a WebGPU browser. Without it you get a black screen, not a slow load.
 
-## 操作
+## Controls
 
-- 拖动 / 滚轮环视（导览播放时会关掉轨道）
-- 右下角相机：开始步行浏览（空格 / Enter 同样有效）
-- 右下角喇叭：雨声开关；第一次点击页面也会解锁音频
+- Drag / scroll to look around (orbit is disabled while the walk tour is playing)
+- Camera button, bottom right: start the walk tour (Space / Enter also work)
+- Speaker button, bottom right: rain audio; the first click on the page also unlocks audio
 
-## 场景
+## Scene
 
-- 城模 `public/models/city.glb`（KTX2 贴图 + meshopt），加载时挂 `KTX2Loader` 与 `MeshoptDecoder`
-- 碰撞雨与高度图、落点水花
-- 河面受光倒影与流动波纹
-- 路面 / 桥湿膜与坑洼平面反射
-- 灯笼点光与微闪、窗暖、店铺自发光
-- 夜空、地平线填充、闪电折线
-- 后处理：ACES 曝光、Bloom、体积雾、抖动
+- City `public/models/city.glb` (KTX2 textures + meshopt), loaded with `KTX2Loader` and `MeshoptDecoder`
+- Colliding rain via a height map, plus splash sprites
+- Canal lighting, reflection, and flowing waves
+- Road / bridge wet film and puddle planar reflection
+- Lantern fill lights and flicker, warm windows, shop emissive
+- Night sky, horizon fill, lightning bolts
+- Post: ACES exposure, bloom, height fog, dither
 
-## 资源
+## Credits
 
-- 城模：Sketchfab「Tanabata evening - Kyoto inspired city scene」（Mathias Tossens，CC-BY-4.0）
-- 雨声 / 雷声：`public/audio/`
-- Basis 转码器：`public/basis/`
+- City GLB: Sketchfab “Tanabata evening - Kyoto inspired city scene” (Mathias Tossens, CC-BY-4.0)
+- Rain and puddle ripples follow the approach in [ektogamat/threejs-conference](https://github.com/ektogamat/threejs-conference)
+- Rain / thunder: `public/audio/`
+- Basis transcoder: `public/basis/`

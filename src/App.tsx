@@ -21,7 +21,8 @@ import { loadCity } from './scene/loadCity'
 import { setupTextureEmissive } from './scene/textureEmissive'
 import { setupWindowEmissive } from './scene/windowEmissive'
 import { createSceneTour } from './tour/createSceneTour'
-import { createFps } from './ui/fps'
+import { bindBoot } from './ui/createLoader'
+import { createFps, type FpsHandle } from './ui/fps'
 
 /**
  * 雨夜主入口（编排器）：加载城景与夜空，装底光与后处理管线，
@@ -45,8 +46,9 @@ export default function App() {
 		let frame = 0
 		let controls: OrbitControls | undefined
 		let cleanupExtras: () => void = () => {}
-		const fps = createFps()
+		let fps: FpsHandle | undefined
 		const weatherAudio = createRainAudio()
+		const bootUi = bindBoot()
 
 		/**
 		 * 异步启动：渲染器 → 城 / 夜空 → 底光 → 后处理管线 → 灯 / 雨 / 湿膜 → 循环。
@@ -73,6 +75,7 @@ export default function App() {
 				renderer.dispose()
 				return () => {}
 			}
+			bootUi.gpuDone()
 
 			renderer.setPixelRatio( Math.min( window.devicePixelRatio, 2 ) )
 			renderer.setSize( hostEl.clientWidth, hostEl.clientHeight )
@@ -105,10 +108,14 @@ export default function App() {
 			controls.update()
 
 			// —— 3. 城模 ——
-			const city = await loadCity( { renderer } )
+			const city = await loadCity( {
+				renderer,
+				onProgress: ( progress ) => bootUi.assets( progress ),
+			} )
 			if ( disposed ) {
 				return () => {}
 			}
+			bootUi.prepare()
 			scene.add( city.root )
 			city.root.updateMatrixWorld( true )
 
@@ -311,9 +318,13 @@ export default function App() {
 					visibilityMaxDistance: 35,
 				} )
 				post.render()
-				fps.frame( dt * 1000, renderer!.info.render.drawCalls )
+				fps?.frame( dt * 1000, renderer!.info.render.drawCalls )
 			}
 			tick()
+			bootUi.finish()
+			await bootUi.dismiss()
+			if ( disposed ) return () => {}
+			fps = createFps()
 
 			let cleaned = false
 			const cleanup = () => {
@@ -355,14 +366,13 @@ export default function App() {
 			} )
 			.catch( ( err: unknown ) => {
 				console.error( '[rainy-night-webgpu] 雨夜启动失败', err )
-				hostEl.textContent =
-					'WebGPU / 夜景 / 雨系统初始化失败 · 请看控制台「雨夜主入口」。'
+				bootUi.fail( 'WebGPU / scene failed to start. Check the console.' )
 			} )
 
 		return () => {
 			disposed = true
 			weatherAudio.dispose()
-			fps.dispose()
+			fps?.dispose()
 			cleanupInner()
 			cleanupExtras()
 			if ( renderer ) {

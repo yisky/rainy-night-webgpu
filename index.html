@@ -5,9 +5,84 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>rainy-night-webgpu</title>
+    <style>
+      :root {
+        --tw-u: clamp(1px, calc(0.7px + 0.04vmin), 1.25px);
+        --tw-aqua: #5fe3d4;
+        --tw-ink: #eef6f8;
+        --tw-ink-3: rgba(200, 222, 232, 0.52);
+        --tw-glass: rgba(12, 18, 26, 0.62);
+        --tw-line: rgba(170, 215, 235, 0.12);
+        --tw-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        --tw-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        --tw-3: calc(12 * var(--tw-u));
+        --tw-fs-xs: calc(10.5 * var(--tw-u));
+        --tw-fs-md: calc(12.5 * var(--tw-u));
+      }
+      html, body, #root { margin: 0; width: 100%; height: 100%; background: #0a0c10; }
+      #boot {
+        position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
+        background: #0a0c10; color: var(--tw-ink); font-family: var(--tw-font);
+        -webkit-font-smoothing: antialiased;
+      }
+      .tw-boot-card {
+        width: min(320px, calc(100% - 48px));
+        padding: calc(18 * var(--tw-u)) calc(20 * var(--tw-u)) calc(16 * var(--tw-u));
+        border-radius: calc(12 * var(--tw-u));
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 40%), var(--tw-glass);
+        border: 1px solid var(--tw-line);
+        color: var(--tw-ink);
+      }
+      .tw-boot-title { font-size: var(--tw-fs-xs); letter-spacing: 0.12em; color: var(--tw-ink-3); }
+      .tw-boot-stage { margin-top: calc(6 * var(--tw-u)); font-size: var(--tw-fs-md); }
+      .tw-boot-track {
+        display: grid; grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: calc(4 * var(--tw-u)); margin-top: calc(16 * var(--tw-u)); height: calc(28 * var(--tw-u));
+      }
+      .tw-boot-cell {
+        height: 100%; overflow: hidden; border-radius: calc(4 * var(--tw-u));
+        background: rgba(8, 12, 18, 0.45); border: 1px solid var(--tw-line);
+      }
+      .tw-boot-fill {
+        height: 100%; width: 100%; transform: scaleX(0); transform-origin: left center;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 42%), var(--tw-aqua);
+      }
+      .tw-boot-meta {
+        display: flex; align-items: baseline; justify-content: space-between;
+        gap: var(--tw-3); margin-top: calc(10 * var(--tw-u));
+      }
+      .tw-boot-pct {
+        flex: none; min-width: 3.6ch; font-family: var(--tw-mono); font-size: var(--tw-fs-md);
+        font-variant-numeric: tabular-nums; color: var(--tw-aqua); text-align: right;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot" class="tw-boot" role="progressbar" aria-label="Loading scene" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="tw-boot-card tw-glass">
+        <div class="tw-boot-title">Rainy Night</div>
+        <div class="tw-boot-stage">Loading scene</div>
+        <div class="tw-boot-track">
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+          <div class="tw-boot-cell"><div class="tw-boot-fill"></div></div>
+        </div>
+        <div class="tw-boot-meta">
+          <div class="tw-boot-sub"></div>
+          <span class="tw-boot-pct">0%</span>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

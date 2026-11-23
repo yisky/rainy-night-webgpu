@@ -3,9 +3,14 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import type { WebGPURenderer } from 'three/webgpu'
+import { fetchBuffer } from '../load/fetchBuffer'
+import type { AssetProgress } from '../ui/createLoader'
 
 /** Basis 转码器，给 KTX2 / KHR_texture_basisu 用。 */
 const BASIS_TRANSCODER_PATH = '/basis/'
+
+/** `public/models/city.glb` 本地体积；没有 Content-Length 时用。 */
+const CITY_GLB_BYTES = 31729208
 
 /** 统一缩放后，包围盒最长边对齐到世界目标边长。 */
 const DEFAULT_TARGET_SIZE = 48
@@ -101,6 +106,10 @@ export interface CityLoadOptions {
 	 * @defaultValue `true`
 	 */
 	crushPlantEmissive?: boolean
+	/**
+	 * 城模下载进度。按字节回调；KTX2 转码走启动遮罩的「准备画面」。
+	 */
+	onProgress?: ( progress: AssetProgress ) => void
 }
 
 /**
@@ -130,11 +139,24 @@ export async function loadCity( options: CityLoadOptions ): Promise<CityLoadResu
 	loader.setKTX2Loader( ktx2Loader )
 	loader.setMeshoptDecoder( MeshoptDecoder )
 
+	const report = options.onProgress
+	const buf = await fetchBuffer( url, ( loaded, total ) => {
+		report?.( {
+			ratio: total > 0 ? Math.min( 1, loaded / total ) : 1,
+			stage: 'City model',
+			loaded,
+			total,
+		} )
+	}, CITY_GLB_BYTES )
+	const objUrl = URL.createObjectURL( new Blob( [ buf ], { type: 'model/gltf-binary' } ) )
+
 	let root: Group
 	try {
-		const gltf = await loader.loadAsync( url )
+		await MeshoptDecoder.ready
+		const gltf = await loader.loadAsync( objUrl )
 		root = gltf.scene
 	} finally {
+		URL.revokeObjectURL( objUrl )
 		ktx2Loader.dispose()
 	}
 
